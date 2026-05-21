@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Trophy, Search, UserPlus, UserCheck, UserX, MapPin, Sparkles, AlertCircle, Heart, Users } from "lucide-react";
 import { Player, ActivityLog } from "../types";
+import { TRANSLATIONS, Lang, LOCALIZED_OBJECTS } from "../translations";
 
 interface SocialTabProps {
   currentUsername: string;
@@ -11,6 +12,7 @@ interface SocialTabProps {
   players: Player[];
   logs: ActivityLog[];
   onUpdateFriendStatus: (playerId: string, action: "send" | "accept" | "decline" | "remove") => void;
+  lang: Lang;
 }
 
 export default function SocialTab({
@@ -21,8 +23,10 @@ export default function SocialTab({
   currentUserDuration,
   players,
   logs,
-  onUpdateFriendStatus
+  onUpdateFriendStatus,
+  lang
 }: SocialTabProps) {
+  const t = TRANSLATIONS[lang];
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSubTab, setActiveSubTab] = useState<"global" | "local" | "amics" | "activitat">("global");
 
@@ -39,8 +43,12 @@ export default function SocialTab({
         // Trigger push notification using our in-app engine!
         try {
           (window as any).triggerNotification?.(
-            "❤️ ENVIAT",
-            `Has enviat un m'agrada a la troballa de @${logNickname}!`,
+            lang === "en" ? "❤️ SENT" : lang === "es" ? "❤️ ENVIADO" : "❤️ ENVIAT",
+            lang === "en" 
+              ? `You liked @${logNickname}'s discovery!`
+              : lang === "es"
+              ? `¡Le diste me gusta al hallazgo de @${logNickname}!`
+              : `Has enviat un m'agrada a la troballa de @${logNickname}!`,
             "like"
           );
         } catch(e) {}
@@ -115,10 +123,10 @@ export default function SocialTab({
       {/* Title */}
       <div className="bg-white border-4 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black">
         <h2 className="text-2xl font-black uppercase italic tracking-tight mb-2 flex items-center gap-2">
-          <Trophy className="text-black w-6 h-6 shrink-0" /> COMUNITAT I RÀNKINGS
+          <Trophy className="text-black w-6 h-6 shrink-0" /> {t.socialTitle || "COMUNITAT I RÀNKINGS"}
         </h2>
         <p className="text-xs font-semibold uppercase text-gray-700">
-          Troba altres jugadors, envia sol·licituds d'amistat i consulta qui és el millor de debò de les teves zones.
+          {t.socialSubtitle || "Troba altres jugadors, envia sol·licituds d'amistat i consulta qui és el millor de debò de les teves zones."}
         </p>
       </div>
 
@@ -135,7 +143,7 @@ export default function SocialTab({
               <input
                 id="search-player-input"
                 type="text"
-                placeholder="Cerca jugadors pel seu nom o ciutat (ex: Girona)..."
+                placeholder={lang === "en" ? "Search players by name or city (e.g. Barcelona)..." : lang === "es" ? "Busca jugadores por nombre o ciudad (ej. Barcelona)..." : "Cerca jugadors pel seu nom o ciutat (ex: Girona)..."}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full bg-white border-2 border-black rounded-none py-3 pl-10 pr-4 text-black text-sm font-bold focus:outline-none focus:bg-[#CCFF00]/10 transition-colors"
@@ -145,7 +153,7 @@ export default function SocialTab({
                   onClick={() => setSearchQuery("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black uppercase text-gray-650 hover:text-black cursor-pointer"
                 >
-                  Netejar
+                  {lang === "en" ? "Clear" : lang === "es" ? "Limpiar" : "Netejar"}
                 </button>
               )}
             </div>
@@ -154,11 +162,11 @@ export default function SocialTab({
               // Search Results mode
               <div className="space-y-3">
                 <h3 className="text-xs font-black text-gray-700 uppercase tracking-widest">
-                  Resultats de la cerca ({filteredPlayers.length})
+                  {lang === "en" ? "Search Results" : lang === "es" ? "Resultados de búsqueda" : "Resultats de la cerca"} ({filteredPlayers.length})
                 </h3>
                 {filteredPlayers.length === 0 ? (
                   <div className="bg-[#F3F3F3] p-6 border-2 border-black text-center text-gray-600 text-xs font-bold uppercase">
-                    No hem trobat cap caçador que coincideixi amb la cerca.
+                    {lang === "en" ? "No players found matching your search." : lang === "es" ? "No se encontraron cazadores coincidentes." : "No hem trobat cap caçador que coincideixi amb la cerca."}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -175,7 +183,7 @@ export default function SocialTab({
                             <MapPin className="w-3 h-3 text-black" /> {p.city}
                           </div>
                           <div className="text-xs text-black font-black uppercase italic mt-1 bg-[#CCFF00] px-1.5 py-0.5 inline-block border border-black">
-                            {p.points} PTS • {p.foundCount} TROBATS
+                            {p.points} PTS • {p.foundCount} {lang === "en" ? "FOUND" : lang === "es" ? "ENCONTRADOS" : "TROBATS"}
                           </div>
                         </div>
 
@@ -186,13 +194,13 @@ export default function SocialTab({
                               id={`remove-friend-btn-${p.id}`}
                               onClick={() => onUpdateFriendStatus(p.id, "remove")}
                               className="px-2.5 py-1.5 bg-red-100 hover:bg-red-200 border-2 border-black text-red-900 font-bold text-xs uppercase cursor-pointer transition-colors"
-                              title="Eliminar amic"
+                              title={lang === "en" ? "Remove friend" : lang === "es" ? "Eliminar amigo" : "Eliminar amic"}
                             >
-                              Amics
+                              {lang === "en" ? "Friends" : lang === "es" ? "Amigos" : "Amics"}
                             </button>
                           ) : p.friendStatus === "sent" ? (
                             <span className="text-xs font-black uppercase text-gray-500 bg-white border-2 border-black border-dashed px-2.5 py-1.5">
-                              Pendent
+                              {lang === "en" ? "Pending" : lang === "es" ? "Pendiente" : "Pendent"}
                             </span>
                           ) : p.friendStatus === "received" ? (
                             <button
@@ -200,7 +208,7 @@ export default function SocialTab({
                               onClick={() => onUpdateFriendStatus(p.id, "accept")}
                               className="px-3 py-1.5 bg-[#CCFF00] hover:bg-black hover:text-[#CCFF00] text-black font-black border-2 border-black text-xs transition-all uppercase cursor-pointer"
                             >
-                              Acceptar
+                              {lang === "en" ? "Accept" : lang === "es" ? "Aceptar" : "Acceptar"}
                             </button>
                           ) : (
                             <button
@@ -208,7 +216,7 @@ export default function SocialTab({
                               onClick={() => onUpdateFriendStatus(p.id, "send")}
                               className="px-3 py-1.5 bg-white hover:bg-black hover:text-white text-black font-black border-2 border-black text-xs transition-all uppercase cursor-pointer"
                             >
-                              Afegir
+                              {lang === "en" ? "Add" : lang === "es" ? "Añadir" : "Afegir"}
                             </button>
                           )}
                         </div>
@@ -230,7 +238,7 @@ export default function SocialTab({
                         : "border-transparent text-gray-500 hover:text-black hover:bg-gray-100"
                     }`}
                   >
-                    Global
+                    {lang === "en" ? "Global" : lang === "es" ? "Global" : "Global"}
                   </button>
                   <button
                     id="subtag-local-btn"
@@ -241,7 +249,7 @@ export default function SocialTab({
                         : "border-transparent text-gray-500 hover:text-black hover:bg-gray-100"
                     }`}
                   >
-                    Local ({currentUserCity})
+                    {lang === "en" ? "Local" : lang === "es" ? "Local" : "Local"} ({currentUserCity})
                   </button>
                   <button
                     id="subtag-amics-btn"
@@ -252,7 +260,7 @@ export default function SocialTab({
                         : "border-transparent text-gray-500 hover:text-black hover:bg-gray-100"
                     }`}
                   >
-                    Amics
+                    {lang === "en" ? "Friends" : lang === "es" ? "Amigos" : "Amics"}
                   </button>
                 </div>
 
@@ -288,22 +296,22 @@ export default function SocialTab({
                           
                           <div>
                             <div className="font-black text-sm uppercase flex items-center gap-1.5">
-                              <span>{p.nickname}</span>
+                              <span>{isCurrentUser ? `${currentUsername} (${lang === "en" ? "You" : lang === "es" ? "Tú" : "Tu"})` : p.nickname}</span>
                               {isCurrentUser && (
                                 <span className="bg-black text-[#CCFF00] text-[9px] px-1.5 py-0.5 font-black uppercase tracking-wider">
-                                  Tu
+                                  {lang === "en" ? "You" : lang === "es" ? "Tú" : "Tu"}
                                 </span>
                               )}
                               {p.isFriend && (
                                 <span className="text-emerald-700 text-xs font-black uppercase">
-                                  • Amic
+                                  • {lang === "en" ? "Friend" : lang === "es" ? "Amigo" : "Amic"}
                                 </span>
                               )}
                             </div>
                             <div className="text-[11px] text-gray-600 font-bold uppercase flex items-center gap-1">
                               <MapPin className="w-3 h-3 text-black" /> {p.city}
                               <span className="mx-1">•</span>
-                              <span>Temps: {formatTime(p.durationSeconds || 0)}</span>
+                              <span>{lang === "en" ? "Time" : lang === "es" ? "Tiempo" : "Temps"}: {formatTime(p.durationSeconds || 0)}</span>
                             </div>
                           </div>
                         </div>
@@ -314,7 +322,7 @@ export default function SocialTab({
                             {p.points} PTS
                           </div>
                           <div className="text-[10px] font-bold uppercase text-gray-500 mt-1">
-                            {p.foundCount}/10 trobats
+                            {p.foundCount}/10 {lang === "en" ? "found" : lang === "es" ? "encontrados" : "trobats"}
                           </div>
                         </div>
                       </div>
@@ -324,9 +332,9 @@ export default function SocialTab({
                   {(activeSubTab === "amics" && friendsRanking.length === 1) && (
                     <div className="text-center p-8 bg-[#F3F3F3] border-2 border-black text-gray-600 text-xs font-bold uppercase space-y-2">
                       <Users className="w-8 h-8 mx-auto text-black" />
-                      <p>Encara no has afegit cap amic a la teva llista d'amics.</p>
+                      <p>{lang === "en" ? "You haven't added any friends to your friends list yet." : lang === "es" ? "Aún no has agregado ningún amigo a tu lista de amigos." : "Encara no has afegit cap amic a la teva llista d'amics."}</p>
                       <p className="text-[10px] text-gray-500">
-                        Busca de dalt i prem "Afegir" per competir-hi.
+                        {lang === "en" ? "Search above and click 'Add' to compete with them." : lang === "es" ? "Busca arriba y pulsa 'Añadir' para competir con ellos." : "Busca de dalt i prem 'Afegir' per competir-hi."}
                       </p>
                     </div>
                   )}
@@ -338,12 +346,12 @@ export default function SocialTab({
           </div>
         </div>
 
-        {/* Right Column: Live Activity Feed (Temps real) */}
+        {/* Right Column: Live Activity Feed */}
         <div className="lg:col-span-4 space-y-4">
           <div className="bg-white border-4 border-black p-5 space-y-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
             <div className="flex items-center justify-between pb-2 border-b-2 border-black">
               <h3 className="text-sm font-black uppercase text-black tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-black shrink-0 animate-pulse" /> Activitat en Viu
+                <Sparkles className="w-4 h-4 text-black shrink-0 animate-pulse" /> {lang === "en" ? "Live Activity" : lang === "es" ? "Actividad en Vivo" : "Activitat en Viu"}
               </h3>
               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping border border-black" />
             </div>
@@ -351,6 +359,13 @@ export default function SocialTab({
             <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
               {logs.map((log) => {
                 const itemLike = localLikes[log.id] || { count: Math.floor(Math.random() * 5) + 1, active: false };
+                // Dynamic translation of object names in live feed
+                const matchedKey = Object.keys(LOCALIZED_OBJECTS.ca || {}).find(key => {
+                  const caName = LOCALIZED_OBJECTS.ca[key]?.name.toLowerCase();
+                  return caName === log.objectName.toLowerCase() || log.objectName.toLowerCase().includes(key);
+                });
+                const transObjName = matchedKey ? (LOCALIZED_OBJECTS[lang]?.[matchedKey]?.name || log.objectName) : log.objectName;
+
                 return (
                   <div
                     key={log.id}
@@ -366,7 +381,7 @@ export default function SocialTab({
                     </div>
                     
                     <p className="text-xs text-black font-semibold uppercase">
-                      Ha trobat l'objecte <strong className="bg-[#CCFF00] px-1 border border-black text-[11px] font-black">{log.objectName}</strong>!
+                      {lang === "en" ? "Found target: " : lang === "es" ? "Encontró el objetivo: " : "Ha trobat l'objecte: "} <strong className="bg-[#CCFF00] px-1 border border-black text-[11px] font-black">{transObjName}</strong>!
                     </p>
                     
                     <div className="flex items-center justify-between text-[11px] text-black pt-1 border-t border-black/5">
@@ -377,7 +392,7 @@ export default function SocialTab({
                         }`}
                       >
                         <Heart className={`w-4 h-4 transition-colors ${itemLike.active ? "fill-red-600 text-red-600 animate-pulse" : "text-black"}`} /> 
-                        <span>M'agrada</span>
+                        <span>{lang === "en" ? "Like" : lang === "es" ? "Me gusta" : "M'agrada"}</span>
                         <span className="bg-black/10 text-black px-1.5 py-0.2 rounded-full text-[10px] ml-0.5">{itemLike.count}</span>
                       </button>
                       <span className="bg-black text-[#CCFF00] font-black px-1.5 py-0.5 text-[10px]">
@@ -390,7 +405,7 @@ export default function SocialTab({
 
               {logs.length === 0 && (
                 <p className="text-gray-500 text-xs font-bold text-center py-6 uppercase">
-                  Sense activitat recent registrada.
+                  {lang === "en" ? "No recent activity recorded." : lang === "es" ? "Sin actividad reciente registrada." : "Sense activitat recent registrada."}
                 </p>
               )}
             </div>

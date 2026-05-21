@@ -35,7 +35,7 @@ import ProfileMosaic from "./components/ProfileMosaic";
 import LoginScreen from "./components/LoginScreen";
 import TeamManagement from "./components/TeamManagement";
 import ChallengesSection from "./components/ChallengesSection";
-import { TRANSLATIONS, Lang } from "./translations";
+import { TRANSLATIONS, Lang, LOCALIZED_OBJECTS, LOCALIZED_HINTS } from "./translations";
 import { playBeep, playSuccessSound, playErrorSound, playScanSound } from "./utils/audio";
 
 
@@ -130,6 +130,48 @@ const OBJECT_HINTS: Record<string, { cost: number; clue: string }[]> = {
   ]
 };
 
+const getLocalDateString = (date: Date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const calculateStreakFromDates = (dates: string[]): number => {
+  if (!dates || dates.length === 0) return 0;
+  
+  // Sort in descending order
+  const sortedDates = [...new Set(dates)].sort((a, b) => b.localeCompare(a));
+  
+  const todayStr = getLocalDateString(new Date());
+  const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
+  
+  const newestDateStr = sortedDates[0];
+  
+  // If the newest verification date is older than yesterday, the streak is broken (0)
+  if (newestDateStr !== todayStr && newestDateStr !== yesterdayStr) {
+    return 0;
+  }
+  
+  let currentCheck = newestDateStr === todayStr ? new Date() : new Date(Date.now() - 86400000);
+  let streakCount = 1;
+  const dateSet = new Set(sortedDates);
+  
+  while (true) {
+    const tempCheck = new Date(currentCheck.getTime());
+    tempCheck.setDate(tempCheck.getDate() - 1);
+    const checkStr = getLocalDateString(tempCheck);
+    if (dateSet.has(checkStr)) {
+      streakCount++;
+      currentCheck = tempCheck;
+    } else {
+      break;
+    }
+  }
+  
+  return streakCount;
+};
+
 export default function App() {
   // Language & Internationalization
   const [lang, setLang] = useState<Lang>(() => {
@@ -147,16 +189,47 @@ export default function App() {
 
   const t = TRANSLATIONS[lang];
 
-  // Daily Streak
-  const [streak, setStreak] = useState<number>(() => {
-    const saved = localStorage.getItem("flashhunt_streak");
-    return saved ? parseInt(saved, 10) : 3;
-  });
+  // Daily Streak (computed from verified dates list)
+  const [streak, setStreak] = useState<number>(3);
+  const [streakDates, setStreakDates] = useState<string[]>([]);
 
   // Navigation & User State
   const [currentUser, setCurrentUser] = useState<string | null>(() => localStorage.getItem("flashhunt_user"));
   const [currentCity, setCurrentCity] = useState<string | null>(() => localStorage.getItem("flashhunt_city"));
   const [activeTab, setActiveTab] = useState<"llista" | "social" | "mosaic" | "instruccions" | "reptes" | "cooperatiu">("llista");
+
+  // Keep streak dates list and calculated streak in sync based on current user
+  useEffect(() => {
+    const key = currentUser ? `flashhunt_${currentUser}_streak_dates` : "flashhunt_streak_dates";
+    const savedDates = localStorage.getItem(key);
+    let datesList: string[] = [];
+    if (savedDates) {
+      try {
+        const parsed = JSON.parse(savedDates);
+        if (Array.isArray(parsed)) {
+          datesList = parsed;
+        }
+      } catch (e) {}
+    }
+    
+    // Seed default dates if no history is present, so existing streak (default 3) is preserved
+    if (datesList.length === 0) {
+      const oldStreakSaved = localStorage.getItem(currentUser ? `flashhunt_${currentUser}_streak` : "flashhunt_streak");
+      const initialStreakCount = oldStreakSaved ? parseInt(oldStreakSaved, 10) : 3;
+      
+      const seedDate = new Date();
+      for (let i = 0; i < initialStreakCount; i++) {
+        datesList.push(getLocalDateString(seedDate));
+        seedDate.setDate(seedDate.getDate() - 1);
+      }
+      localStorage.setItem(key, JSON.stringify(datesList));
+    }
+    
+    setStreakDates(datesList);
+    const calculated = calculateStreakFromDates(datesList);
+    setStreak(calculated);
+    localStorage.setItem(currentUser ? `flashhunt_${currentUser}_streak` : "flashhunt_streak", String(calculated));
+  }, [currentUser]);
 
   // Onboarding controls
   const [inputUser, setInputUser] = useState("");
@@ -358,7 +431,9 @@ export default function App() {
         "spent_points",
         "completed_challenges",
         "current_team",
-        "revealed_hints"
+        "revealed_hints",
+        "streak_dates",
+        "streak"
       ];
       keysToMigrate.forEach(key => {
         const val = localStorage.getItem(oldPrefix + key);
@@ -606,6 +681,24 @@ export default function App() {
             return o;
           }));
 
+          // Add today's date to streak dates list and recalculate streak
+          const todayStr = getLocalDateString(new Date());
+          setStreakDates(prev => {
+            if (!prev.includes(todayStr)) {
+              const updated = [...prev, todayStr];
+              const key = currentUser ? `flashhunt_${currentUser}_streak_dates` : "flashhunt_streak_dates";
+              localStorage.setItem(key, JSON.stringify(updated));
+              
+              const calculated = calculateStreakFromDates(updated);
+              setStreak(calculated);
+              const streakKey = currentUser ? `flashhunt_${currentUser}_streak` : "flashhunt_streak";
+              localStorage.setItem(streakKey, String(calculated));
+              localStorage.setItem("flashhunt_streak", String(calculated));
+              return updated;
+            }
+            return prev;
+          });
+
           setVerificationResult({
             success: true,
             reason: data.reason,
@@ -788,42 +881,48 @@ export default function App() {
 
             {/* List objects grid layout */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {huntList.map((obj) => (
-                <div
-                  id={`item-card-${obj.key}`}
-                  key={obj.key}
-                  className={`border-2 border-black p-5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
-                    obj.verified
-                      ? "bg-gray-50 border-emerald-600 text-black"
-                      : "bg-white hover:bg-[#CCFF00]/10"
-                  }`}
-                >
-                  <div className="space-y-1.5 relative z-10">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-black text-xl uppercase tracking-tight text-black flex items-center gap-1.5">
-                        {obj.verified ? <span className="text-emerald-600">✓</span> : <span className="text-xs font-black text-red-655">•</span>}
-                        <span>{obj.name}</span>
-                      </h3>
-                      {/* Difficulty and score badges */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className={`text-[9px] uppercase font-black px-2 py-0.5 border border-black ${
-                          obj.difficulty === "Fàcil"
-                            ? "bg-green-200 text-black"
-                            : obj.difficulty === "Mitjana"
-                            ? "bg-amber-200 text-black"
-                            : "bg-red-200 text-black"
-                        }`}>
-                          {obj.difficulty}
-                        </span>
-                        <span className="bg-[#CCFF00] font-black text-black text-[11px] px-2 py-0.5 border border-black">
-                          +{obj.points} PTS
-                        </span>
+              {huntList.map((obj) => {
+                const locObj = LOCALIZED_OBJECTS[lang]?.[obj.key] || { name: obj.name, desc: obj.desc };
+                const isEasy = obj.difficulty === "Fàcil" || obj.difficulty === "Easy" || obj.difficulty === "Fácil";
+                const isMedium = obj.difficulty === "Mitjana" || obj.difficulty === "Medium" || obj.difficulty === "Media";
+                const difficultyText = isEasy ? t.difficultyEasy : isMedium ? t.difficultyMedium : t.difficultyHard;
+
+                return (
+                  <div
+                    id={`item-card-${obj.key}`}
+                    key={obj.key}
+                    className={`border-2 border-black p-5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
+                      obj.verified
+                        ? "bg-gray-50 border-emerald-600 text-black"
+                        : "bg-white hover:bg-[#CCFF00]/10"
+                    }`}
+                  >
+                    <div className="space-y-1.5 relative z-10">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-black text-xl uppercase tracking-tight text-black flex items-center gap-1.5">
+                          {obj.verified ? <span className="text-emerald-600">✓</span> : <span className="text-xs font-black text-red-655">•</span>}
+                          <span>{locObj.name}</span>
+                        </h3>
+                        {/* Difficulty and score badges */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[9px] uppercase font-black px-2 py-0.5 border border-black ${
+                            isEasy
+                              ? "bg-green-200 text-black"
+                              : isMedium
+                              ? "bg-amber-200 text-black"
+                              : "bg-red-200 text-black"
+                          }`}>
+                            {difficultyText}
+                          </span>
+                          <span className="bg-[#CCFF00] font-black text-black text-[11px] px-2 py-0.5 border border-black">
+                            +{obj.points} PTS
+                          </span>
+                        </div>
                       </div>
+                      <p className="text-xs text-neutral-700 font-bold uppercase tracking-tight mt-1">
+                        {locObj.desc}
+                      </p>
                     </div>
-                    <p className="text-xs text-neutral-700 font-bold uppercase tracking-tight mt-1">
-                      {obj.desc}
-                    </p>
-                  </div>
 
                   {/* Thumbnail if user already solved it */}
                   {obj.verified && obj.photoUrl ? (
@@ -856,22 +955,22 @@ export default function App() {
                         className="w-full bg-[#CCFF00] hover:bg-white text-black font-black border-2 border-black py-3 rounded-none text-xs transition-all flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5"
                       >
                         <Camera className="w-4 h-4 text-black shrink-0" /> 
-                        Fes foto per validar
+                        {lang === "en" ? "Take photo to validate" : lang === "es" ? "Haz foto para validar" : "Fes foto per validar"}
                       </button>
 
                       {/* Optional Hints with progressive disclosure & point cost deduction */}
                       <div className="pt-2 border-t border-black/15 text-black">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-1 leading-none select-none">
-                            <HelpCircle className="w-3.5 h-3.5" /> Pistes d'Ubicació i trucs
+                            <HelpCircle className="w-3.5 h-3.5" /> {lang === "en" ? "Location Hints & Tips" : lang === "es" ? "Pistas de ubicación" : "Pistes d'Ubicació i trucs"}
                           </span>
                           <span className="text-[9px] bg-black text-[#CCFF00] font-black px-1.5 py-0.5 uppercase leading-none select-none">
-                            OPCIONAL
+                            {lang === "en" ? "OPTIONAL" : lang === "es" ? "OPCIONAL" : "OPCIONAL"}
                           </span>
                         </div>
 
                         <div className="space-y-1.5">
-                          {OBJECT_HINTS[obj.key]?.map((hint, idx) => {
+                          {(LOCALIZED_HINTS[lang]?.[obj.key] || OBJECT_HINTS[obj.key] || [])?.map((hint, idx) => {
                             const isRevealed = revealedHints[obj.key]?.includes(idx);
                             return (
                               <div key={idx} className="p-2 border-2 border-black bg-[#F8F8F8] text-[11px] font-bold uppercase transition-all">
@@ -881,7 +980,7 @@ export default function App() {
                                   </div>
                                 ) : (
                                   <div className="flex items-center justify-between gap-2">
-                                    <span className="text-gray-500 font-extrabold text-[9px] select-none uppercase">PISTA #{idx + 1} ({hint.cost} PTS)</span>
+                                    <span className="text-gray-500 font-extrabold text-[9px] select-none uppercase">{lang === "en" ? "HINT" : lang === "es" ? "PISTA" : "PISTA"} #{idx + 1} ({hint.cost} PTS)</span>
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -894,7 +993,7 @@ export default function App() {
                                               : lang === "es"
                                               ? "¡No tienes suficientes puntos para revelar esta pista! Consigue más cazando objetos o completando retos."
                                               : "No tens suficients punts per desbloquejar aquesta pista de caça! Aconsegueix-ne més caçant objectes o resolvent els reptes setmanals.",
-                                            confirmText: "D'acord",
+                                            confirmText: lang === "en" ? "OK" : lang === "es" ? "Aceptar" : "D'acord",
                                             onConfirm: () => setConfirmDialog(null)
                                           });
                                           return;
@@ -905,7 +1004,7 @@ export default function App() {
                                             ? `Do you want to spend ${hint.cost} points of your score to unlock this scavenger hint?`
                                             : lang === "es"
                                             ? `¿Quieres gastar ${hint.cost} puntos de tu puntuación para revelar esta pista de ayuda?`
-                                            : `Vols gastar ${hint.cost} punts de la teva puntuació per desbloquejar aquesta pista d'ajuda sobre "${obj.name}"?`,
+                                            : `Vols gastar ${hint.cost} punts de la teva puntuació per desbloquejar aquesta pista d'ajuda sobre "${locObj.name}"?`,
                                           confirmText: lang === "en" ? "SPEND POINTS" : lang === "es" ? "GASTAR PUNTOS" : "REVELAR",
                                           onConfirm: () => {
                                             setSpentPoints(prev => prev + hint.cost);
@@ -916,14 +1015,21 @@ export default function App() {
                                                 [obj.key]: [...current, idx]
                                               };
                                             });
-                                            handleAddLiveLog(`Ha desbloquejat una pista de caça per a "${obj.name}"`, -hint.cost);
+                                            handleAddLiveLog(
+                                              lang === "en" 
+                                                ? `Unlocked a hint for "${locObj.name}"` 
+                                                : lang === "es" 
+                                                ? `Desbloqueó una pista para "${locObj.name}"` 
+                                                : `Ha desbloquejat una pista de caça per a "${locObj.name}"`, 
+                                              -hint.cost
+                                            );
                                             setConfirmDialog(null);
                                           }
                                         });
                                       }}
                                       className="px-2 py-0.5 bg-black hover:bg-[#CCFF00] text-[#CCFF00] hover:text-black border border-black text-[9px] tracking-tight font-black uppercase transition-all cursor-pointer"
                                     >
-                                      Desbloquejar
+                                      {lang === "en" ? "Unlock" : lang === "es" ? "Revelar" : "Desbloquejar"}
                                     </button>
                                   </div>
                                 )}
@@ -935,7 +1041,8 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+            })}
             </div>
           </div>
         )}
@@ -947,6 +1054,7 @@ export default function App() {
             currentTeam={currentTeam}
             onSetTeam={setCurrentTeam}
             onAddLog={handleAddLiveLog}
+            lang={lang}
           />
         )}
 
@@ -956,6 +1064,7 @@ export default function App() {
             onAwardBonusPoints={handleAwardBonusPoints}
             completedChallengesHistory={completedChallenges}
             onSetCompletedChallenges={setCompletedChallenges}
+            lang={lang}
           />
         )}
 
@@ -969,6 +1078,7 @@ export default function App() {
             players={dbPlayers}
             logs={dbLogs}
             onUpdateFriendStatus={handleUpdateFriend}
+            lang={lang}
           />
         )}
 
@@ -991,28 +1101,36 @@ export default function App() {
           <div id="instructions-tab" className="space-y-6 animate-fade-in text-black font-sans max-w-2xl mx-auto">
             <div className="bg-white border-4 border-black p-6 space-y-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
               <h2 className="text-2xl font-black text-black uppercase italic tracking-tight flex items-center gap-1.5 border-b-2 border-black pb-3">
-                <BookOpen className="w-6 h-6 text-black shrink-0" /> Guia Oficial del Caçador
+                <BookOpen className="w-6 h-6 text-black shrink-0" /> {lang === "en" ? "Official Scavenger Guide" : lang === "es" ? "Guía Oficial del Cazador" : "Guia Oficial del Caçador"}
               </h2>
 
               <div className="space-y-4 text-xs md:text-sm text-neutral-800 leading-relaxed font-bold uppercase">
                 <div>
                   <h3 className="font-black text-black mb-2 flex items-center gap-2">
-                    <Sparkles className="w-4.5 h-4.5 text-black" /> Com funciona la validació de IA reals?
+                    <Sparkles className="w-4.5 h-4.5 text-black" /> {lang === "en" ? "How does actual AI validation work?" : lang === "es" ? "¿Cómo funciona la validación real por IA?" : "Com funciona la validació de IA reals?"}
                   </h3>
                   <p className="text-gray-600 font-medium lowercase first-letter:uppercase">
-                    Al contrari que altres plataformes que es basen en respostes falses, FlashHunt utilitza el SDK neuronal Gemini 3.5 de Google per fer un escaneig i validació estricta instantània de cada pixel capturat.
+                    {lang === "en" 
+                      ? "Unlike other platforms relying on fake simulation reviews, FlashHunt uses Google's neural SDK Gemini to perform real, strict, split-second validation of captured pixels." 
+                      : lang === "es" 
+                      ? "Al contrario que otras plataformas que dependen de respuestas simuladas falsas, FlashHunt utiliza el SDK neuronal Gemini de Google para realizar una validación estricta al instante de cada píxel capturado." 
+                      : "Al contrari que altres plataformes que es basen en respostes falses, FlashHunt utilitza el SDK neuronal Gemini 3.5 de Google per fer un escaneig i validació estricta instantània de cada pixel capturat."}
                   </p>
                   <p className="mt-2 text-[#CCFF00] bg-black p-2 border border-black inline-block font-black tracking-tight select-none">
-                    SEMAFOR VERMELL? DETECTAT. GOS REAL? SÍ, SENSE ENGANYS.
+                    {lang === "en" ? "RED LIGHT? CONFIRMED. REAL DOG? YES, UNMISTAKABLY." : lang === "es" ? "¿SEMÁFORO ROJO? DETECTADO. ¿PERRO REAL? SÍ, SIN ENGAÑOS." : "SEMAFOR VERMELL? DETECTAT. GOS REAL? SÍ, SENSE ENGANYS."}
                   </p>
                 </div>
 
                 <div>
                   <h3 className="font-black text-black mb-1.5 flex items-center gap-2">
-                    <Trophy className="w-4.5 h-4.5 text-black" /> Rànking i Competició d’amics
+                    <Trophy className="w-4.5 h-4.5 text-black" /> {lang === "en" ? "Leaderboard & Friends Scavenger Hunt" : lang === "es" ? "Ranking y Competición entre Amigos" : "Rànking i Competició d’amics"}
                   </h3>
                   <p className="text-gray-600 font-medium lowercase first-letter:uppercase">
-                    Es mantenen actualitzats els participants que cerquen elements actius en diferents pobles i ciutats de Catalunya simultàniament. Envia'ls sol·licituds i veuràs com responen ràpid !
+                    {lang === "en" 
+                      ? "See how hunters in Barcelona, Girona, Lleida, and other towns are progress-tracking in real-time. Connect with them and boost your competitive spirit!" 
+                      : lang === "es" 
+                      ? "Sigue la actividad de los cazadores en diferentes municipios catalanes al mismo tiempo. ¡Envía solicitudes y mira cómo responden de rápido!" 
+                      : "Es mantenen actualitzats els participants que cerquen elements actius en diferents pobles i ciutats de Catalunya simultàniament. Envia'ls sol·licituds i veuràs com responen ràpid !"}
                   </p>
                 </div>
               </div>
@@ -1021,10 +1139,14 @@ export default function App() {
             {/* Change Profile details block */}
             <div className="bg-white border-4 border-black p-5 space-y-3 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
               <h3 className="text-lg font-black uppercase italic flex items-center gap-1.5 text-black">
-                <User className="w-5 h-5 text-black" /> Configuració d'Usuari
+                <User className="w-5 h-5 text-black" /> {lang === "en" ? "User Settings" : lang === "es" ? "Configuración de Usuario" : "Configuració d'Usuari"}
               </h3>
               <p className="text-xs text-neutral-700 font-medium">
-                Vols canviar el teu àlies o traslladar-te a viure a una altra ciutat de Catalunya? Pots fer-ho lliurement prement el botó de reiniciar les dades del perfil d'onboarding.
+                {lang === "en" 
+                  ? "Want to shift your username or relocate to another Catalan municipality? Purge your profile settings to restart onboarding easily!" 
+                  : lang === "es" 
+                  ? "¿Quieres cambiar tu alias o mudarte de municipio catalán? Puedes hacerlo pulsando para borrar el perfil local de onboarding." 
+                  : "Vols canviar el teu àlies o traslladar-te a viure a una altra ciutat de Catalunya? Pots fer-ho lliurement prement el botó de reiniciar les dades del perfil d'onboarding."}
               </p>
               <button
                 id="reset-profile-btn"
@@ -1046,7 +1168,7 @@ export default function App() {
                 }}
                 className="bg-red-100 hover:bg-neutral-900 hover:text-white text-red-700 font-black border-2 border-black px-4 py-2 text-xs transition-colors cursor-pointer uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
               >
-                Esborrar tot el perfil d'usuari
+                {lang === "en" ? "Delete entire user profile" : lang === "es" ? "Borrar todo el perfil de usuario" : "Esborrar tot el perfil d'usuari"}
               </button>
             </div>
           </div>
@@ -1336,10 +1458,25 @@ export default function App() {
                   setHuntList(prev => prev.map(o => ({ ...o, verified: false, photoUrl: undefined, verifyDate: undefined })));
                   // Reset timer back to another 7 days (604800 seconds)
                   setSecondsRemaining(604800);
-                  // Increment streak!
-                  const nextStreak = streak + 1;
-                  setStreak(nextStreak);
-                  localStorage.setItem("flashhunt_streak", String(nextStreak));
+                  // Increment streak and update real dates!
+                  setStreakDates(prev => {
+                    const todayStr = getLocalDateString(new Date());
+                    let updated = [...prev];
+                    if (!updated.includes(todayStr)) {
+                      updated.push(todayStr);
+                    }
+                    const key = currentUser ? `flashhunt_${currentUser}_streak_dates` : "flashhunt_streak_dates";
+                    localStorage.setItem(key, JSON.stringify(updated));
+                    
+                    const calculated = calculateStreakFromDates(updated);
+                    const finalStreak = Math.max(calculated, streak + 1);
+                    setStreak(finalStreak);
+                    
+                    const streakKey = currentUser ? `flashhunt_${currentUser}_streak` : "flashhunt_streak";
+                    localStorage.setItem(streakKey, String(finalStreak));
+                    localStorage.setItem("flashhunt_streak", String(finalStreak));
+                    return updated;
+                  });
                   
                   // Reset bonusPoints
                   setBonusPoints(0);

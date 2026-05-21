@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Sparkles, Calendar, Clock, Trophy, Award, Flame, CheckCircle, CheckSquare, Zap } from "lucide-react";
 import { Challenge, HuntObject } from "../types";
+import { TRANSLATIONS, Lang, LOCALIZED_CHALLENGES } from "../translations";
 
 interface ChallengesSectionProps {
   huntList: HuntObject[];
   onAwardBonusPoints: (points: number, badgeName: string) => void;
   completedChallengesHistory: string[];
   onSetCompletedChallenges: (challenges: string[]) => void;
+  lang: Lang;
 }
 
 const INITIAL_CHALLENGES: Challenge[] = [
@@ -64,7 +66,8 @@ export default function ChallengesSection({
   huntList,
   onAwardBonusPoints,
   completedChallengesHistory,
-  onSetCompletedChallenges
+  onSetCompletedChallenges,
+  lang
 }: ChallengesSectionProps) {
   const [challenges, setChallenges] = useState<Challenge[]>(INITIAL_CHALLENGES);
   const [alertBadge, setAlertBadge] = useState<{ name: string; pts: number } | null>(null);
@@ -134,9 +137,17 @@ export default function ChallengesSection({
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="font-black text-sm uppercase italic">REPTE SUPERAT COMRADE! 🎉</h4>
+              <h4 className="font-black text-sm uppercase italic">
+                {lang === "en" ? "CHALLENGE COMPLETED COMRADE! 🎉" : lang === "es" ? "¡RETO SUPERADO COMRADE! 🎉" : "REPTE SUPERAT COMRADE! 🎉"}
+              </h4>
               <p className="text-xs font-bold uppercase text-gray-800">
-                Has guanyat la insígnia <strong className="bg-black text-white px-1.5 py-0.5">{alertBadge.name}</strong> i +{alertBadge.pts} PTS addicionals reals!
+                {lang === "en" ? (
+                  <>You won the badge <strong className="bg-black text-white px-1.5 py-0.5">{alertBadge.name}</strong> and earned +{alertBadge.pts} bonus PTS!</>
+                ) : lang === "es" ? (
+                  <>¡Has ganado la insignia <strong className="bg-black text-white px-1.5 py-0.5">{alertBadge.name}</strong> y +{alertBadge.pts} PTS directos!</>
+                ) : (
+                  <>Has guanyat la insígnia <strong className="bg-black text-white px-1.5 py-0.5">{alertBadge.name}</strong> i +{alertBadge.pts} PTS addicionals reals!</>
+                )}
               </p>
             </div>
           </div>
@@ -144,7 +155,7 @@ export default function ChallengesSection({
             onClick={() => setAlertBadge(null)}
             className="px-3 py-1 bg-black text-white hover:bg-white hover:text-black border-2 border-black font-black text-xs uppercase cursor-pointer"
           >
-            Tancar
+            {lang === "en" ? "Close" : lang === "es" ? "Cerrar" : "Tancar"}
           </button>
         </div>
       )}
@@ -153,15 +164,19 @@ export default function ChallengesSection({
       <div className="bg-white border-4 border-black p-5 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl font-black uppercase italic tracking-tight flex items-center gap-2">
-            <Zap className="text-black w-6 h-6 shrink-0" /> REPTES DIARIS I SETMANALS
+            <Zap className="text-black w-6 h-6 shrink-0" /> {lang === "en" ? "DAILY & WEEKLY CHALLENGES" : lang === "es" ? "RETOS DIARIOS Y SEMANALES" : "REPTES DIARIS I SETMANALS"}
           </h2>
           <p className="text-xs font-semibold uppercase text-gray-700">
-            Completa els objectius de caça específics per guanyar insígnies exclusives i bónus de puntuació directe.
+            {lang === "en" 
+              ? "Complete specific scavenger hunt objectives to earn exclusive badges and direct bonus points." 
+              : lang === "es" 
+              ? "Completa los objetivos de caza específicos para ganar insignias exclusivas y bonus de puntuación directo." 
+              : "Completa els objectius de caça específics per guanyar insígnies exclusives i bónus de puntuació directe."}
           </p>
         </div>
 
         <div className="bg-black text-[#CCFF00] font-black uppercase text-[10px] px-3 py-1.5 border-2 border-black shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none">
-          INSÍGNIES TOTALS: {completedChallengesHistory.length}
+          {lang === "en" ? "TOTAL BADGES" : lang === "es" ? "INSIGNIAS TOTALES" : "INSÍGNIES TOTALS"}: {completedChallengesHistory.length}
         </div>
       </div>
 
@@ -169,6 +184,13 @@ export default function ChallengesSection({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {challenges.map((ch) => {
           const ratio = Math.min(100, Math.round((ch.current / ch.target) * 100));
+          const locCh = (LOCALIZED_CHALLENGES[lang] || []).find(x => x.id === ch.id) || { 
+            title: ch.title, 
+            description: ch.description, 
+            badgeName: ch.badgeName, 
+            expiresIn: ch.expiresIn 
+          };
+
           return (
             <div
               key={ch.id}
@@ -185,26 +207,28 @@ export default function ChallengesSection({
                     <span className={`text-[9px] font-black uppercase border border-black px-1.5 py-0.5 select-none ${
                       ch.type === "daily" ? "bg-amber-100 text-black animate-pulse" : "bg-purple-100 text-black"
                     }`}>
-                      {ch.type === "daily" ? "DIARI" : "SETMANAL"}
+                      {ch.type === "daily" 
+                        ? (lang === "en" ? "DAILY" : lang === "es" ? "DIARIO" : "DIARI") 
+                        : (lang === "en" ? "WEEKLY" : lang === "es" ? "SEMANAL" : "SETMANAL")}
                     </span>
                     <span className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {ch.expiresIn}
+                      <Clock className="w-3 h-3" /> {locCh.expiresIn}
                     </span>
                   </div>
 
                   {ch.completed && (
                     <span className="bg-emerald-100 text-emerald-900 border border-emerald-500 text-[10px] font-black uppercase px-2 py-0.5">
-                      SUPERAT ✓
+                      {lang === "en" ? "PASSED ✓" : lang === "es" ? "SUPERADO ✓" : "SUPERAT ✓"}
                     </span>
                   )}
                 </div>
 
                 <div>
                   <h3 className="font-black text-lg uppercase tracking-tight text-black flex items-center gap-1.5">
-                    {ch.title}
+                    {locCh.title}
                   </h3>
                   <p className="text-xs text-neutral-700 font-bold uppercase tracking-tight mt-1 leading-relaxed">
-                    {ch.description}
+                    {locCh.description}
                   </p>
                 </div>
               </div>
@@ -213,7 +237,7 @@ export default function ChallengesSection({
                 {/* Progress bar */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase text-gray-600">
-                    <span>PROGRÉS DE CACERA</span>
+                    <span>{lang === "en" ? "SCAVENGER PROGRESS" : lang === "es" ? "PROGRESO DE CAZA" : "PROGRÉS DE CACERA"}</span>
                     <span>{ch.current} / {ch.target} ({ratio}%)</span>
                   </div>
                   <div className="w-full bg-gray-200 border border-black h-3">
@@ -225,7 +249,7 @@ export default function ChallengesSection({
                 <div className="bg-[#F3F3F3] border-2 border-black p-2 flex items-center justify-between text-xs font-black uppercase">
                   <div className="flex items-center gap-1.5 truncate text-black">
                     <Award className="w-4 h-4 shrink-0 text-black" />
-                    <span className="truncate">{ch.badgeName}</span>
+                    <span className="truncate">{locCh.badgeName}</span>
                   </div>
                   <span className="bg-[#CCFF00] px-2 py-0.5 border border-black text-[11px] shrink-0">
                     +{ch.rewardPoints} PTS
