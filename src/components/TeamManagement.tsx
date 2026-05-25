@@ -12,7 +12,57 @@ interface TeamManagementProps {
   lang: Lang;
 }
 
-const INITIAL_TEAMS: Team[] = [];
+const INITIAL_TEAMS: Team[] = [
+  {
+    id: "team_senglars",
+    name: "Senglars del Montseny",
+    passcode: "1234",
+    targetScore: 500,
+    points: 320,
+    members: [
+      {
+        nickname: "OriolGirona",
+        pointsContributed: 140,
+        joinedAt: "Fa 2 dies",
+        avatarBg: "bg-amber-200"
+      },
+      {
+        nickname: "NuriaVic",
+        pointsContributed: 180,
+        joinedAt: "Ahir",
+        avatarBg: "bg-blue-200"
+      }
+    ]
+  },
+  {
+    id: "team_dracs",
+    name: "Dracs de Gràcia",
+    targetScore: 300,
+    points: 185,
+    members: [
+      {
+        nickname: "LaiaValles",
+        pointsContributed: 185,
+        joinedAt: "Fa 3 dies",
+        avatarBg: "bg-purple-200"
+      }
+    ]
+  },
+  {
+    id: "team_super",
+    name: "Cercadors Terres de l'Ebre",
+    targetScore: 1000,
+    points: 410,
+    members: [
+      {
+        nickname: "SenglarHunter",
+        pointsContributed: 410,
+        joinedAt: "Fa 5 dies",
+        avatarBg: "bg-emerald-200"
+      }
+    ]
+  }
+];
 
 export default function TeamManagement({
   currentUsername,

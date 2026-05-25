@@ -593,16 +593,33 @@ export default function App() {
   }, [revealedHints, currentUser]);
 
   // Live logging and cooperative point integration
-  const handleAddLiveLog = (text: string, points: number) => {
+  const handleAddLiveLog = async (text: string, points: number, objectKey: string = "challenge") => {
     const newLog: ActivityLog = {
       id: `log_${Date.now()}`,
       nickname: currentUser || "Tu",
-      objectKey: "challenge",
+      objectKey: objectKey,
       objectName: text,
       points: points,
       timestamp: new Date().toLocaleTimeString("ca-ES", { hour: "2-digit", minute: "2-digit" })
     };
     setDbLogs(prev => [newLog, ...prev]);
+
+    // Send log to server so rankings and social feeds sync immediately
+    try {
+      await fetch("/api/logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: currentUser || "Tu",
+          objectKey: objectKey,
+          objectName: text,
+          points: points
+        })
+      });
+      fetchServerStats();
+    } catch (err) {
+      console.warn("Could not post log to server", err);
+    }
 
     // If currentTeam is active, we also update its points!
     if (currentTeam) {
@@ -620,6 +637,37 @@ export default function App() {
     }
   };
 
+  // Synchronize player stats with server
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const controller = new AbortController();
+    async function syncPlayer() {
+      try {
+        await fetch("/api/players", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            nickname: currentUser,
+            city: currentCity || "Barcelona",
+            points: totalPoints,
+            foundCount: foundCount,
+            durationSeconds: duration
+          })
+        });
+      } catch (err) {
+        // fail silently
+      }
+    }
+    
+    syncPlayer();
+    
+    return () => {
+      controller.abort();
+    };
+  }, [currentUser, currentCity, totalPoints, foundCount]); // Exclude duration sequence to avoid excessive spam, but keep status accurate on score changes!
+
   const handleAwardBonusPoints = (points: number, badgeName: string) => {
     setBonusPoints(prev => prev + points);
     handleAddLiveLog(`Ha superat el repte "${badgeName}"`, points);
@@ -627,6 +675,7 @@ export default function App() {
 
   // Triggering the request to check friend status update
   async function handleUpdateFriend(playerId: string, action: "send" | "accept" | "decline" | "remove") {
+    playScanSound();
     try {
       const res = await fetch(`/api/players/${playerId}/friend`, {
         method: "POST",
@@ -634,6 +683,35 @@ export default function App() {
         body: JSON.stringify({ action })
       });
       if (res.ok) {
+        const data = await res.json();
+        const nickname = data.player?.nickname || "Caçador";
+        
+        if (action === "send") {
+          triggerNotification(
+            lang === "en" ? "FRIEND REQUEST" : "SOL·LICITUD D'AMISTAT",
+            lang === "en" 
+              ? `Sent request to @${nickname}!` 
+              : `Has enviat una sol·licitud d'amistat a @${nickname}!`,
+            "friend"
+          );
+        } else if (action === "accept") {
+          triggerNotification(
+            lang === "en" ? "FRIEND ACCEPTED" : "AMIC ACCEPTAT",
+            lang === "en"
+              ? `You are now friends with @${nickname}!`
+              : `Ara ets amic de @${nickname}! Competiu pel rànquing!`,
+            "friend"
+          );
+          playSuccessSound();
+        } else if (action === "remove") {
+          triggerNotification(
+            lang === "en" ? "FRIEND REMOVED" : "AMIC ELIMINAT",
+            lang === "en"
+              ? `Removed @${nickname} from your friend list.`
+              : `Has eliminat @${nickname} de la llista d'amics.`,
+            "info"
+          );
+        }
         await fetchServerStats();
       }
     } catch (error) {
@@ -766,18 +844,47 @@ export default function App() {
   }
 
   // Format time remaining
-  function formatCountdown(secs: number) {
+  function formatCountdown(secs: number, isCompact: boolean = false) {
     const days = Math.floor(secs / 86400);
     const hours = Math.floor((secs % 86400) / 3600);
     const minutes = Math.floor((secs % 3600) / 60);
+    if (isCompact) {
+      return `${days}d • ${hours}h ${minutes}m`;
+    }
+    if (lang === "en") {
+      return `${days}d and ${hours}h ${minutes}m left`;
+    } else if (lang === "es") {
+      return `${days}d y ${hours}h ${minutes}m restantes`;
+    }
     return `${days}dies i ${hours}h ${minutes}m restants`;
   }
 
   // Loading indicator random strings
-  const [loadingTip, setLoadingTip] = useState("S'està enviant la imatge...");
+  const [loadingTip, setLoadingTip] = useState("");
   useEffect(() => {
+    const defaultTip = lang === "en" 
+      ? "Uploading capture image..." 
+      : lang === "es" 
+      ? "Enviando imagen capturada..." 
+      : "S'està enviant la imatge...";
+    setLoadingTip(defaultTip);
+
     if (isVerifying) {
-      const tips = [
+      const tips = lang === "en" ? [
+        "Initiating neural analysis on the photo...",
+        "The computer vision algorithm is scanning target layout structures...",
+        "Examining camera background and pixels...",
+        "Validating illumination filters and visual context...",
+        "Checking for potential duplicate spoof submissions...",
+        "Verifying presence of object using Gemini's vision capability..."
+      ] : lang === "es" ? [
+        "Iniciando análisis neuronal de la fotografía...",
+        "El algoritmo de visión artificial está escaneando la estructura del objeto...",
+        "Examinando fondo y píxeles de la cámara...",
+        "Validando detalles de luz y contexto visual...",
+        "Verificando si hay elementos de trampa automática...",
+        "Comprobando presencia de objeto con el modelo de visión Gemini..."
+      ] : [
         "Iniciant anàlisi neuronal de la fotografia...",
         "L'algoritme de visió artificial està escanejant l'estructura de l'objecte...",
         "Examinant fons i pixels de la càmera...",
@@ -792,7 +899,7 @@ export default function App() {
       }, 3500);
       return () => clearInterval(interval);
     }
-  }, [isVerifying]);
+  }, [isVerifying, lang]);
 
   if (!currentUser) {
     return (
@@ -814,32 +921,53 @@ export default function App() {
     <div className="min-h-screen bg-[#F3F3F3] text-black flex flex-col justify-between selection:bg-[#CCFF00] selection:text-black font-sans">
       
       {/* Top sticky overall scores and timers bar */}
-      <header className="sticky top-0 z-40 bg-[#CCFF00] border-b-4 border-black py-3.5 px-4 md:px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 bg-black text-[#CCFF00] border-2 border-black flex items-center justify-center font-black text-2xl uppercase select-none rotate-3">
+      <header className="sticky top-0 z-40 bg-[#CCFF00] border-b-4 border-black py-3 px-4 md:px-6">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 bg-black text-[#CCFF00] border-2 border-black flex items-center justify-center font-black text-2xl uppercase select-none rotate-3 shrink-0">
               F
             </div>
-            <div>
+            <div className="truncate">
               <span className="font-black text-2xl md:text-3xl tracking-tighter leading-none uppercase italic text-black block">FlashHunt</span>
-              <span className="text-[10px] font-bold tracking-widest uppercase mt-0.5 text-black flex items-center gap-1">
-                <MapPin className="w-2.5 h-2.5" /> {currentCity} • SÈRIE EXPERIMENT
+              <span className="text-[9px] md:text-[10px] font-bold tracking-tight uppercase mt-0.5 text-black flex items-center gap-1 truncate">
+                <MapPin className="w-2.5 h-2.5 shrink-0" /> {currentCity} • {lang === "en" ? "EXPERIMENT SERIES" : lang === "es" ? "SERIE EXPERIMENTO" : "SÈRIE EXPERIMENT"}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-3 text-xs shrink-0">
+            {/* Real-time Language Selector right in the header */}
+            <div className="flex bg-black border border-black p-0.5 shrink-0">
+              {(["ca", "es", "en"] as Lang[]).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => { playBeep(); handleSetLang(l); }}
+                  className={`px-1.5 py-0.5 text-[9px] font-black cursor-pointer transition-all duration-150 ${
+                    lang === l
+                      ? "bg-[#CCFF00] text-black scale-103"
+                      : "bg-transparent text-[#CCFF00]/80 hover:text-[#CCFF00] hover:bg-white/5"
+                  }`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
             {/* Clock display */}
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-[10px] font-black uppercase text-black leading-none">TEMPS RESTANT</span>
+            <div className="hidden sm:flex flex-col items-end shrink-0">
+              <span className="text-[10px] font-black uppercase text-black leading-none">
+                {lang === "en" ? "TIME REMAINING" : lang === "es" ? "TIEMPO RESTANTE" : "TEMPS RESTANT"}
+              </span>
               <span className="text-xs font-black uppercase mt-1 bg-black text-white p-1 font-mono transition-colors">
                 {formatCountdown(secondsRemaining)}
               </span>
             </div>
 
             {/* Score display block */}
-            <div className="bg-black text-[#CCFF00] border-2 border-black p-2 font-black text-center flex flex-col justify-center items-end shadow-[3px_3px_0px_0px_rgba(0,0,0,0.15)]">
-              <span className="text-[9px] font-bold uppercase leading-none">PUNTS</span>
+            <div className="bg-black text-[#CCFF00] border-2 border-black p-2 font-black text-center flex flex-col justify-center items-end shadow-[3px_3px_0px_0px_rgba(0,0,0,0.15)] shrink-0">
+              <span className="text-[9px] font-bold uppercase leading-none">
+                {lang === "en" ? "POINTS" : lang === "es" ? "PUNTOS" : "PUNTS"}
+              </span>
               <span className="text-xl font-black leading-none mt-0.5">{totalPoints}</span>
             </div>
           </div>
@@ -853,25 +981,34 @@ export default function App() {
         {activeTab === "llista" && (
           <div id="hunt-list-tab" className="space-y-5 animate-fade-in">
             {/* Header / Intro instructions */}
-            <div className="bg-white border-4 border-black p-6 text-black space-y-3 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-white border-4 border-black p-5 text-black space-y-3 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-3xl font-black tracking-tight uppercase italic flex items-center gap-1.5 text-black">
-                  <Flame className="w-6 h-6 text-black shrink-0" /> TROBA ELS 10 OBJECTES!
+                  <Flame className="w-6 h-6 text-black shrink-0" /> {lang === "en" ? "FIND THE 10 OBJECTS!" : lang === "es" ? "¡ENCUENTRA LOS 10 OBJETOS!" : "TROBA ELS 10 OBJECTES!"}
                 </h2>
                 <p className="text-black text-xs font-semibold uppercase mt-2 leading-relaxed">
-                  Aquesta setmana tens deu objectes del món real. Guanya el rànking qui n'aconseguesqui <strong className="bg-[#CCFF00] px-1 border border-black">100 punts totals</strong> en el menor temps possible.
+                  {lang === "en" 
+                    ? "This week you have ten real-world objects. The weekly ranking is won by whoever accumulates 100 total points in the shortest time." 
+                    : lang === "es" 
+                    ? "Esta semana tienes diez objetos del mundo real. El ranking semanal lo gana quien acumule 100 puntos totales en el menor tiempo posible." 
+                    : "Aquesta setmana tens deu objectes del món real. Guanya el rànking qui n'aconsegueixi 100 punts totals en el menor temps possible."}
                 </p>
               </div>
-              <div className="flex flex-row items-center gap-4 bg-[#F3F3F3] p-3 border-2 border-black shrink-0">
-                <div className="text-right">
-                  <div className="text-[10px] font-black uppercase text-gray-500">OBJECTES TROBATS</div>
+              <div className="flex flex-row items-center gap-4 bg-[#F3F3F3] p-3 border-2 border-black shrink-0 justify-between sm:justify-end w-full md:w-auto">
+                <div className="text-left md:text-right">
+                  <div className="text-[10px] font-black uppercase text-gray-500">
+                    {lang === "en" ? "OBJECTS FOUND" : lang === "es" ? "OBJETOS ENCONTRADOS" : "OBJECTES TROBATS"}
+                  </div>
                   <div className="text-xl font-black text-black">{foundCount} / 10</div>
+                  <div className="sm:hidden text-[9px] font-bold uppercase text-neutral-600 font-mono mt-0.5">
+                    ⏱️ {formatCountdown(secondsRemaining)}
+                  </div>
                 </div>
                 {foundCount > 0 && (
                   <button
                     onClick={handleResetWeekly}
                     className="p-2 border-2 border-black bg-[#CCFF00] hover:bg-black hover:text-[#CCFF00] transition-colors cursor-pointer font-bold"
-                    title="Reiniciar setmana"
+                    title={lang === "en" ? "Reset week" : lang === "es" ? "Reiniciar semana" : "Reiniciar setmana"}
                   >
                     <RefreshCw className="w-4 h-4" />
                   </button>

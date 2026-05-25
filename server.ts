@@ -165,10 +165,195 @@ interface ServerPlayer {
   lastActive: string;
 }
 
-const PLAYERS_DB: ServerPlayer[] = [];
+const PLAYERS_DB: ServerPlayer[] = [
+  {
+    id: "p1",
+    nickname: "OriolGirona",
+    city: "Girona",
+    points: 210,
+    foundCount: 6,
+    durationSeconds: 6850,
+    isFriend: false,
+    friendStatus: 'none',
+    mosaic: [
+      { objectKey: "cadira", photoUrl: "", date: "Avui" },
+      { objectKey: "gos", photoUrl: "", date: "Ahir" },
+      { objectKey: "banc_placa", photoUrl: "", date: "Fa 2 dies" }
+    ],
+    lastActive: "fa 5 min"
+  },
+  {
+    id: "p2",
+    nickname: "LaiaValles",
+    city: "Sabadell",
+    points: 185,
+    foundCount: 5,
+    durationSeconds: 5200,
+    isFriend: true,
+    friendStatus: 'friends',
+    mosaic: [
+      { objectKey: "bicicleta", photoUrl: "", date: "Avui" },
+      { objectKey: "planta_test", photoUrl: "", date: "Fa 3 dies" }
+    ],
+    lastActive: "fa 1 hora"
+  },
+  {
+    id: "p3",
+    nickname: "Xavi_Bcn_99",
+    city: "Barcelona",
+    points: 310,
+    foundCount: 9,
+    durationSeconds: 9400,
+    isFriend: false,
+    friendStatus: 'none',
+    mosaic: [
+      { objectKey: "semafor_vermell", photoUrl: "", date: "Avui" },
+      { objectKey: "autobus", photoUrl: "", date: "Ahir" }
+    ],
+    lastActive: "fa 12 min"
+  },
+  {
+    id: "p4",
+    nickname: "Marta_lleida",
+    city: "Lleida",
+    points: 120,
+    foundCount: 4,
+    durationSeconds: 4300,
+    isFriend: false,
+    friendStatus: 'sent',
+    mosaic: [
+      { objectKey: "motxilla", photoUrl: "", date: "Fa 4 dies" }
+    ],
+    lastActive: "fa 2 hores"
+  },
+  {
+    id: "p5",
+    nickname: "CescTarraco",
+    city: "Tarragona",
+    points: 145,
+    foundCount: 4,
+    durationSeconds: 3900,
+    isFriend: false,
+    friendStatus: 'received',
+    mosaic: [
+      { objectKey: "banc_placa", photoUrl: "", date: "Fa 2 dies" }
+    ],
+    lastActive: "fa 4 min"
+  },
+  {
+    id: "p6",
+    nickname: "NuriaVic",
+    city: "Vic",
+    points: 260,
+    foundCount: 7,
+    durationSeconds: 7100,
+    isFriend: false,
+    friendStatus: 'none',
+    mosaic: [
+      { objectKey: "placa_carrer", photoUrl: "", date: "Avui" }
+    ],
+    lastActive: "fa 42 min"
+  },
+  {
+    id: "p7",
+    nickname: "SenglarHunter",
+    city: "Olot",
+    points: 410,
+    foundCount: 11,
+    durationSeconds: 11200,
+    isFriend: false,
+    friendStatus: 'none',
+    mosaic: [
+      { objectKey: "gargola_pedra", photoUrl: "", date: "Ahir" }
+    ],
+    lastActive: "fa 3 hores"
+  }
+];
 
 // In-Memory Activity Log for live feed
-const ACTIVITY_LOGS: { id: string; nickname: string; objectKey: string; objectName: string; points: number; timestamp: string }[] = [];
+const ACTIVITY_LOGS: { id: string; nickname: string; objectKey: string; objectName: string; points: number; timestamp: string }[] = [
+  {
+    id: "log1",
+    nickname: "Xavi_Bcn_99",
+    objectKey: "semafor_vermell",
+    objectName: "Ha trobat Un semàfor de vianants clàssic en vermell (Mitjana)",
+    points: 20,
+    timestamp: "fa 3 min"
+  },
+  {
+    id: "log2",
+    nickname: "OriolGirona",
+    objectKey: "gos",
+    objectName: "Ha trobat Un gòs autèntic passejant actiu (Fàcil)",
+    points: 15,
+    timestamp: "fa 14 min"
+  },
+  {
+    id: "log3",
+    nickname: "LaiaValles",
+    objectKey: "bicicleta",
+    objectName: "Ha trobat Una bicicleta de línia lligada amb cadenat (Mitjana)",
+    points: 22,
+    timestamp: "fa 1 hora"
+  },
+  {
+    id: "log4",
+    nickname: "NuriaVic",
+    objectKey: "placa_carrer",
+    objectName: "Ha trobat Placa oficial de nom de carrer de pedra gravada (Difícil)",
+    points: 45,
+    timestamp: "fa 2 hores"
+  }
+];
+
+// Tick interval to simulate dynamic hunt events from competitors
+let lastTickTime = Date.now();
+function tickSimulatedPlayers() {
+  const nowMs = Date.now();
+  const elapsed = nowMs - lastTickTime;
+  
+  // Every 25 seconds of activity, there is a chance of simulated update
+  if (elapsed > 25000) {
+    lastTickTime = nowMs;
+    const activeSimulated = PLAYERS_DB.filter(p => !p.id.startsWith("me"));
+    if (activeSimulated.length > 0) {
+      const player = activeSimulated[Math.floor(Math.random() * activeSimulated.length)];
+      const objKeys = Object.keys(OBJECTS_DB);
+      const randomKey = objKeys[Math.floor(Math.random() * objKeys.length)];
+      const obj = OBJECTS_DB[randomKey];
+
+      // 60% chance to find something
+      if (Math.random() > 0.40) {
+        player.points += obj.points;
+        player.foundCount += 1;
+        player.lastActive = "fa un moment";
+        
+        // Push to mosaic
+        if (!player.mosaic.some(m => m.objectKey === randomKey)) {
+          player.mosaic.unshift({
+            objectKey: randomKey,
+            photoUrl: "",
+            date: "Avui"
+          });
+        }
+        
+        // Push activity log
+        ACTIVITY_LOGS.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          nickname: player.nickname,
+          objectKey: randomKey,
+          objectName: `Ha trobat ${obj.name} (${obj.difficulty})`,
+          points: obj.points,
+          timestamp: "fa un moment"
+        });
+        
+        if (ACTIVITY_LOGS.length > 30) {
+          ACTIVITY_LOGS.pop();
+        }
+      }
+    }
+  }
+}
 
 // Express API endpoints
 app.get("/api/health", (req, res) => {
@@ -181,10 +366,79 @@ app.get("/api/health", (req, res) => {
 
 // Get global list of simulated players and rankings
 app.get("/api/players", (req, res) => {
+  tickSimulatedPlayers();
   res.json({
     players: PLAYERS_DB,
     logs: ACTIVITY_LOGS
   });
+});
+
+// Create/Update user player profile on server DB
+app.post("/api/players", (req, res) => {
+  const { nickname, city, points, foundCount, durationSeconds } = req.body;
+  if (!nickname) {
+    res.status(400).json({ error: "Nickname obligatori" });
+    return;
+  }
+
+  // Look for existing user player
+  let player = PLAYERS_DB.find(p => p.id === "me" || p.nickname.toLowerCase() === nickname.toLowerCase());
+  
+  if (player) {
+    player.nickname = nickname;
+    player.city = city || player.city;
+    player.points = points !== undefined ? points : player.points;
+    player.foundCount = foundCount !== undefined ? foundCount : player.foundCount;
+    player.durationSeconds = durationSeconds !== undefined ? durationSeconds : player.durationSeconds;
+    player.lastActive = "Ara mateix";
+  } else {
+    player = {
+      id: "me",
+      nickname,
+      city: city || "Barcelona",
+      points: points || 0,
+      foundCount: foundCount || 0,
+      durationSeconds: durationSeconds || 0,
+      isFriend: false,
+      friendStatus: "none",
+      mosaic: [],
+      lastActive: "Ara mateix"
+    };
+    PLAYERS_DB.push(player);
+  }
+
+  res.json({ success: true, player });
+});
+
+// Post live action log to server feed
+app.post("/api/logs", (req, res) => {
+  const { nickname, objectKey, objectName, points } = req.body;
+  
+  const newLog = {
+    id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    nickname: nickname || "Tu",
+    objectKey: objectKey || "challenge",
+    objectName: objectName || "",
+    points: points || 0,
+    timestamp: "Ara mateix"
+  };
+
+  ACTIVITY_LOGS.unshift(newLog);
+  if (ACTIVITY_LOGS.length > 30) {
+    ACTIVITY_LOGS.pop();
+  }
+
+  // Update server side me points
+  const player = PLAYERS_DB.find(p => p.id === "me" || p.nickname.toLowerCase() === (nickname || "").toLowerCase());
+  if (player) {
+    player.points += points || 0;
+    if (objectKey !== "challenge") {
+      player.foundCount += 1;
+    }
+    player.lastActive = "Ara mateix";
+  }
+
+  res.json({ success: true, log: newLog });
 });
 
 // Update friend status
